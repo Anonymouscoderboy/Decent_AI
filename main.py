@@ -1,44 +1,41 @@
 import pyrogram
 from pyrogram import filters
-from pymongo import MongoClient
+from googletrans import Translator
+import pymongo
+
+# Initialize the translator
+translator = Translator()
 
 # Initialize the Pyrogram client
-app = pyrogram.Client(
-    "my_bot",
-    api_id="18654447",
-    api_hash="60ac6f65c766e73dfcc1debef93d06bc",
-    bot_token="5058249365:AAHVL7ozsLYA6N3dHtUTAVkZ3sv_YniZdOk"
-)
+app = pyrogram.Client("my_bot", api_id=123456, api_hash="YOUR_API_HASH", bot_token="YOUR_BOT_TOKEN")
 
-# Connect to MongoDB
-mongo_client = MongoClient("mongodb+srv://abc:abcd@cluster0.0g1g1gt.mongodb.net/?retryWrites=true&w=majority")
+# Initialize MongoDB client and database
+mongo_client = pymongo.MongoClient("YOUR_MONGODB_URL")
 db = mongo_client["chatbot_db"]
+collection = db["responses"]
 
 # Handler for incoming messages
 @app.on_message(filters.text)
-def handle_message(client, message):
-    # Get the chat ID
-    chat_id = message.chat.id
+def reply(client, message):
+    # Detect the language of the incoming message
+    detected_lang = translator.detect(message.text).lang
 
-    # Get or create the chat document in the database
-    chat = db.chats.find_one({"chat_id": chat_id})
-    if not chat:
-        chat = {"chat_id": chat_id, "data": message.text}
-        db.chats.insert_one(chat)
-        reply_text = "Hello! How can I assist you today?"
+    # Translate the incoming message to English for processing
+    translated_text = translator.translate(message.text, dest="en").text
+
+    # Query the database for a response based on the translated message
+    query = {"question": translated_text}
+    response = collection.find_one(query)
+
+    if response:
+        # If a response is found, retrieve it and translate it to the detected language
+        translated_response = translator.translate(response["answer"], dest=detected_lang).text
     else:
-        # Retrieve the data associated with the chat
-        data = chat["data"]
+        # If no response is found, provide a default response
+        translated_response = translator.translate("Sorry, I don't have an answer for that question.", dest=detected_lang).text
 
-        # Process the incoming message and generate a reply
-        # Replace this with your AI model or any other logic
-        reply_text = f"You said: {message.text}. Your data: {data}"
-
-        # Update the data in the database
-        db.chats.update_one({"chat_id": chat_id}, {"$set": {"data": message.text}})
-
-    # Send the reply
-    client.send_message(chat_id, reply_text)
+    # Send the translated response
+    message.reply_text(translated_response)
 
 # Start the bot
 app.run()
